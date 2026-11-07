@@ -1,0 +1,18 @@
+[package]
+name = "devdoctor-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "devdoctor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+devdoctor-core = { path = "../devdoctor-core" }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true
