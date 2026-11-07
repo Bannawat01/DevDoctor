@@ -21,7 +21,7 @@ Build the release server, then add it in Zed: Settings → AI → MCP Servers �
 {
   "context_servers": {
     "devdoctor": {
-      "command": "C:/absolute/path/to/devdoctor-mcp.exe",
+    "command": "C:/bannawat/rust/DevDoctor/target/release/devdoctor-mcp.exe",
       "args": []
     }
   }
@@ -29,6 +29,8 @@ Build the release server, then add it in Zed: Settings → AI → MCP Servers �
 ```
 
 The stdio server exposes `diagnose_project`, `check_toolchain`, `check_environment`, `check_ports`, and `explain_finding`. It accepts only local existing directories and never runs repository scripts or changes environment state.
+
+The ready-to-copy local configuration is also in `docs/zed-mcp.json`. In Zed, open **Settings → AI → MCP Servers → Add Local Server**, then confirm the server is active before asking the Agent to run `diagnose_project`.
 
 ## Privacy
 
