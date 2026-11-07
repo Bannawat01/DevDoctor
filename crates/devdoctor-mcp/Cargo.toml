@@ -11,4 +11,6 @@ path = "src/main.rs"
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+rmcp.workspace = true
+tokio.workspace = true
 devdoctor-core = { path = "../devdoctor-core" }

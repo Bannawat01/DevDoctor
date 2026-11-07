@@ -530,4 +530,17 @@ mod tests {
             "token=<redacted> password=<redacted>"
         );
     }
+    #[test]
+    fn malformed_configuration_is_not_a_port_mapping() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("compose.yml"), "ports: [not-a-port]\n").unwrap();
+        assert!(detect_project(d.path()).compose_ports.is_empty());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn subprocess_timeout_is_bounded() {
+        let started = std::time::Instant::now();
+        assert!(cmd("cmd", &["/C", "ping -n 4 127.0.0.1 >nul"]).is_none());
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
 }
