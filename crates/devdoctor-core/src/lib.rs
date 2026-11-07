@@ -424,6 +424,10 @@ impl TcpListenerCheck {
 }
 pub fn explain(code: &str) -> Option<(&'static str, &'static str)> {
     match code {
+        "RUST-TOOLCHAIN-OK" => Some((
+            "Rust compiler available",
+            "No action is required; rerun DevDoctor if the selected toolchain changes.",
+        )),
         "RUST-TOOLCHAIN-001" => Some(("Rust compiler unavailable", "Install Rust with rustup.")),
         "DOCKER-ENGINE-001" => Some((
             "Docker engine unavailable",
@@ -529,6 +533,11 @@ mod tests {
             redact_text("token=abc password=xyz"),
             "token=<redacted> password=<redacted>"
         );
+    }
+    #[test]
+    fn every_emitted_rust_code_is_explainable() {
+        assert!(explain("RUST-TOOLCHAIN-OK").is_some());
+        assert!(explain("RUST-TOOLCHAIN-001").is_some());
     }
     #[test]
     fn malformed_configuration_is_not_a_port_mapping() {
