@@ -1,0 +1,40 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*-*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package Windows release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binaries
+        run: cargo build --workspace --release
+      - name: Package binaries and documentation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ github.ref_name }}'
+          $name = "devdoctor-windows-x86_64-$version"
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item target/release/devdoctor.exe, target/release/devdoctor-mcp.exe, README.md, LICENSE-MIT, LICENSE-APACHE -Destination $stage
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          "$hash  $([IO.Path]::GetFileName($zip))" | Set-Content -Encoding ascii "$zip.sha256"
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = "devdoctor-windows-x86_64-${{ github.ref_name }}"
+          gh release create "${{ github.ref_name }}" "$env:RUNNER_TEMP/$name.zip" "$env:RUNNER_TEMP/$name.zip.sha256" --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --prerelease --generate-notes

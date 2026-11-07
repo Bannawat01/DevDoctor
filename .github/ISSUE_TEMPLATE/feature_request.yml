@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest a focused improvement to DevDoctor
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, tokens, connection strings, or private filesystem paths in examples.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
