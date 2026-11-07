@@ -43,3 +43,9 @@ The ready-to-copy local configuration is also in `docs/zed-mcp.json`. In Zed, op
 ## Privacy
 
 DevDoctor makes no cloud calls or environment changes. Values from `.env` and URLs are redacted; output contains variable names and safe endpoint metadata only.
+
+## Port ownership scope
+
+When a configured local TCP port is occupied, DevDoctor may add the owning PID and process name to the port finding. On Windows this uses `GetExtendedTcpTable` with `AF_INET`; on Linux it reads `/proc/net/tcp` and process file descriptors. IPv6 ownership is not currently implemented, so an occupied IPv6 listener may have no owner evidence.
+
+Executable metadata may be queried internally when the operating system permits it. Full executable paths are deliberately withheld from CLI and MCP findings; only `executable_path_available=true|false` is exposed. Permission restrictions and unsupported platforms preserve the port conflict finding without terminating or modifying processes.
