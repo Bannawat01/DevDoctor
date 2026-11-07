@@ -14,6 +14,9 @@ use std::{
     time::Duration,
 };
 
+mod port_ownership;
+pub use port_ownership::{OwnershipResult, PortOwner, lookup_tcp_owners};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Severity {
@@ -342,16 +345,7 @@ pub fn diagnose(path: &Path) -> Report {
     }
     for port in &p.compose_ports {
         if TcpListenerCheck::busy(*port) {
-            f.push(finding(
-                "PORT-CONFLICT-001",
-                Severity::Error,
-                "Host port is occupied",
-                "Ports",
-                &format!("TCP port {port} accepts a local connection."),
-                vec![format!("port={port}")],
-                Confidence::Confirmed,
-                "Stop the conflicting service or change the Compose host port.",
-            ));
+            f.push(port_finding(*port));
         }
     }
     f.extend(environment_findings(path, &p));
@@ -431,20 +425,41 @@ pub fn diagnose_ports(path: &Path) -> Report {
         .compose_ports
         .iter()
         .filter(|port| TcpListenerCheck::busy(**port))
-        .map(|port| {
-            finding(
-                "PORT-CONFLICT-001",
-                Severity::Error,
-                "Host port is occupied",
-                "Ports",
-                &format!("TCP port {port} accepts a local connection."),
-                vec![format!("port={port}")],
-                Confidence::Confirmed,
-                "Stop the conflicting service or change the Compose host port.",
-            )
-        })
+        .map(|port| port_finding(*port))
         .collect();
     Report { project, findings }
+}
+
+fn port_finding(port: u16) -> Finding {
+    let mut evidence = vec![format!("port={port}")];
+    match lookup_tcp_owners(port) {
+        OwnershipResult::Owners(owners) if owners.is_empty() => {
+            evidence.push("owner=not_identified".into());
+        }
+        OwnershipResult::Owners(owners) => {
+            for owner in owners {
+                evidence.push(format!(
+                    "owner_pid={},process_name={},executable_path_available={}",
+                    owner.pid,
+                    owner.process_name.as_deref().unwrap_or("unknown"),
+                    owner.executable_path.is_some()
+                ));
+            }
+        }
+        OwnershipResult::PermissionDenied => evidence.push("owner=permission_denied".into()),
+        OwnershipResult::Unsupported => evidence.push("owner=unsupported_platform".into()),
+        OwnershipResult::Unavailable => evidence.push("owner=unavailable".into()),
+    }
+    finding(
+        "PORT-CONFLICT-001",
+        Severity::Error,
+        "Host port is occupied",
+        "Ports",
+        &format!("TCP port {port} accepts a local connection."),
+        evidence,
+        Confidence::Confirmed,
+        "Stop the conflicting service or change the Compose host port.",
+    )
 }
 
 struct TcpListenerCheck;
@@ -572,6 +587,32 @@ mod tests {
         assert_eq!(report.findings.len(), 1);
         assert_eq!(report.findings[0].code, "PORT-CONFLICT-001");
         drop(listener);
+    }
+
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn occupied_port_reports_current_process_owner() {
+        let first = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let second = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        for listener in [&first, &second] {
+            let port = listener.local_addr().unwrap().port();
+            match lookup_tcp_owners(port) {
+                OwnershipResult::Owners(owners) => assert!(
+                    owners.iter().any(|owner| owner.pid == std::process::id()),
+                    "expected current process owner for port {port}, got {owners:?}"
+                ),
+                other => panic!("ownership lookup unavailable on supported platform: {other:?}"),
+            }
+        }
+        assert!(
+            matches!(lookup_tcp_owners(0), OwnershipResult::Owners(owners) if owners.is_empty())
+        );
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
+    #[test]
+    fn unsupported_platform_ownership_is_explicit() {
+        assert_eq!(lookup_tcp_owners(1), OwnershipResult::Unsupported);
     }
 
     #[test]

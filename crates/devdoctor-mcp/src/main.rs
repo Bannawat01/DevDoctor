@@ -224,6 +224,15 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == "ENV-MISSING-001")
         );
+        assert!(
+            ports_report
+                .findings
+                .iter()
+                .flat_map(|finding| &finding.evidence)
+                .any(|evidence| evidence.starts_with("owner_pid=")),
+            "expected port ownership evidence: {:?}",
+            ports_report.findings
+        );
         drop(listener);
 
         let clean = tempdir()?;
