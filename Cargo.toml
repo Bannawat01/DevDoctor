@@ -18,3 +18,5 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 tempfile = "3"
 assert_cmd = "2"
+rmcp = { version = "3.9", features = ["server", "macros", "schemars", "transport-io"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

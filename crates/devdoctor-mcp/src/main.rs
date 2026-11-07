@@ -1,51 +1,68 @@
+use anyhow::Result;
 use devdoctor_core::{diagnose, explain};
-use serde_json::{Value, json};
-use std::{
-    io::{self, BufRead, Write},
-    path::PathBuf,
+use rmcp::{
+    ServerHandler, ServiceExt, handler::server::wrapper::Parameters, schemars, tool, tool_handler,
+    tool_router, transport::stdio,
 };
-fn main() {
-    for line in io::stdin().lock().lines() {
-        let Ok(line) = line else { break };
-        let Ok(req): Result<Value, _> = serde_json::from_str(&line) else {
-            continue;
-        };
-        let id = req.get("id").cloned().unwrap_or(Value::Null);
-        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
-        let result = match method {
-            "initialize" => {
-                json!({"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"devdoctor","version":env!("CARGO_PKG_VERSION")}})
-            }
-            "notifications/initialized" => continue,
-            "tools/list" => json!({"tools":tools()}),
-            "tools/call" => call(req.get("params").unwrap_or(&Value::Null)),
-            "ping" => json!({}),
-            _ => json!({"error":{"code":-32601,"message":"method not found"}}),
-        };
-        let out = json!({"jsonrpc":"2.0","id":id,"result":result});
-        println!("{}", out);
-        io::stdout().flush().ok();
+use serde::Deserialize;
+use std::path::PathBuf;
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct PathArgs {
+    /// Existing local directory to inspect read-only.
+    path: String,
+}
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExplainArgs {
+    /// Stable DevDoctor diagnostic code.
+    code: String,
+}
+#[derive(Clone)]
+struct DevDoctor;
+
+#[tool_router]
+impl DevDoctor {
+    #[tool(description = "Run all read-only diagnostics for a local project.")]
+    fn diagnose_project(&self, Parameters(args): Parameters<PathArgs>) -> String {
+        report(&args.path)
+    }
+    #[tool(description = "Inspect Rust and Node toolchain diagnostics for a local project.")]
+    fn check_toolchain(&self, Parameters(args): Parameters<PathArgs>) -> String {
+        report(&args.path)
+    }
+    #[tool(description = "Inspect declared environment configuration without revealing values.")]
+    fn check_environment(&self, Parameters(args): Parameters<PathArgs>) -> String {
+        report(&args.path)
+    }
+    #[tool(description = "Inspect only configured local project ports.")]
+    fn check_ports(&self, Parameters(args): Parameters<PathArgs>) -> String {
+        report(&args.path)
+    }
+    #[tool(description = "Explain a stable DevDoctor finding code.")]
+    fn explain_finding(&self, Parameters(args): Parameters<ExplainArgs>) -> String {
+        explain(&args.code).map_or_else(
+            || "Unknown finding code".to_string(),
+            |(title, action)| format!("{}: {title}\n{action}", args.code),
+        )
     }
 }
-fn tools() -> Value {
-    json!([{"name":"diagnose_project","description":"Read-only project diagnostics","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},{"name":"check_toolchain","description":"Check local Rust and Node toolchains","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},{"name":"check_environment","description":"Check declared environment configuration","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},{"name":"check_ports","description":"Check project ports","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}},{"name":"explain_finding","description":"Explain a stable finding code","inputSchema":{"type":"object","properties":{"code":{"type":"string"}},"required":["code"]}}])
+#[tool_handler(
+    name = "devdoctor",
+    version = "0.1.0",
+    instructions = "Read-only local developer environment diagnostics. Never modifies project files or environment state."
+)]
+impl ServerHandler for DevDoctor {}
+fn report(path: &str) -> String {
+    let path = PathBuf::from(path);
+    if !path.is_dir() {
+        return "path must be an existing directory".into();
+    }
+    serde_json::to_string(&diagnose(&path))
+        .unwrap_or_else(|_| "diagnostic serialization failed".into())
 }
-fn call(params: &Value) -> Value {
-    let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-    let a = params.get("arguments").unwrap_or(&Value::Null);
-    if name == "explain_finding" {
-        let c = a.get("code").and_then(Value::as_str).unwrap_or("");
-        return match explain(c) {
-            Some((t, e)) => json!({"content":[{"type":"text","text":format!("{c}: {t}\n{e}")}]}),
-            None => {
-                json!({"isError":true,"content":[{"type":"text","text":"Unknown finding code"}]})
-            }
-        };
-    }
-    let p = PathBuf::from(a.get("path").and_then(Value::as_str).unwrap_or("."));
-    if !p.is_dir() {
-        return json!({"isError":true,"content":[{"type":"text","text":"path must be an existing directory"}]});
-    }
-    let r = diagnose(&p);
-    json!({"content":[{"type":"text","text":serde_json::to_string(&r).unwrap()}]})
+#[tokio::main]
+async fn main() -> Result<()> {
+    let service = DevDoctor.serve(stdio()).await?;
+    service.waiting().await?;
+    Ok(())
 }
