@@ -191,9 +191,9 @@ pub fn linker_diagnostic(
     }
     let candidates = resolve_executable(path_entries, &["link.exe"]);
     let first = candidates.first()?;
-    let lower = first.to_ascii_lowercase();
+    let lower = first.to_ascii_lowercase().replace('\\', "/");
     let suspicious =
-        lower.contains("git\\usr\\bin") || lower.contains("mingw") || lower.contains("msys");
+        lower.contains("git/usr/bin") || lower.contains("mingw") || lower.contains("msys");
     let mismatch = rustc_linker.is_some_and(|l| l.eq_ignore_ascii_case("gnu")) && !suspicious;
     if suspicious || mismatch {
         Some(finding(
