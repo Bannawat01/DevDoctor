@@ -1,7 +1,7 @@
 {
   "context_servers": {
     "devdoctor": {
-      "command": "C:/bannawat/rust/DevDoctor/target/release/devdoctor-mcp.exe",
+      "command": "C:/absolute/path/to/devdoctor-mcp.exe",
       "args": []
     }
   }
