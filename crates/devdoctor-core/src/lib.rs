@@ -173,7 +173,11 @@ fn parse_url_port(url: &str) -> Option<u16> {
 pub fn resolve_executable(path_entries: &[String], names: &[&str]) -> Vec<String> {
     path_entries
         .iter()
-        .flat_map(|entry| names.iter().map(move |name| format!("{entry}\\{name}")))
+        .flat_map(|entry| {
+            names
+                .iter()
+                .map(move |name| Path::new(entry).join(name).display().to_string())
+        })
         .filter(|candidate| Path::new(candidate).is_file())
         .collect()
 }
@@ -299,10 +303,8 @@ pub fn diagnose(path: &Path) -> Report {
             let target = host.lines().find_map(|l| l.strip_prefix("host: "));
             if let Some(finding) = linker_diagnostic(
                 target.unwrap_or(""),
-                &std::env::var("PATH")
-                    .unwrap_or_default()
-                    .split(';')
-                    .map(str::to_string)
+                &std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+                    .map(|path| path.display().to_string())
                     .collect::<Vec<_>>(),
                 None,
             ) {
