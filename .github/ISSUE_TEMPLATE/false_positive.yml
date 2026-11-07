@@ -1,0 +1,20 @@
+name: Diagnostic false positive
+description: Report a finding that does not match the verified environment
+title: "[False positive]: "
+labels: [diagnostics]
+body:
+  - type: markdown
+    attributes:
+      value: Do not paste secrets, tokens, connection strings, or private filesystem paths. Redact output and replace paths with placeholders.
+  - type: input
+    id: code
+    attributes:
+      label: Finding code
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence and expected result
+    validations:
+      required: true
