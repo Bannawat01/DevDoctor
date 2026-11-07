@@ -352,57 +352,7 @@ pub fn diagnose(path: &Path) -> Report {
             ));
         }
     }
-    if !p.env_example.is_empty() && !path.join(".env").is_file() {
-        f.push(finding(
-            "ENV-MISSING-001",
-            Severity::Warning,
-            ".env file is missing",
-            "Environment",
-            ".env.example declares variables but .env is absent.",
-            p.env_example.clone(),
-            Confidence::Confirmed,
-            "Create .env from .env.example without committing secrets.",
-        ));
-    }
-    if let Some(url) = &p.database_url {
-        if let Some(port) = parse_url_port(url) {
-            if !p.compose_db_ports.is_empty() && !p.compose_db_ports.contains(&port) {
-                f.push(finding(
-                    "ENV-DATABASE-001",
-                    Severity::Warning,
-                    "DATABASE_URL port does not match Compose",
-                    "PostgreSQL",
-                    "The configured database URL uses a host port not published by Compose.",
-                    vec![
-                        format!("configured_port={port}"),
-                        format!("compose_ports={:?}", p.compose_db_ports),
-                    ],
-                    Confidence::Confirmed,
-                    "Align DATABASE_URL with the published PostgreSQL host port.",
-                ));
-            }
-        }
-        if let Some((host, port)) = parse_url_host_port(url) {
-            let reachable = format!("{host}:{port}")
-                .to_socket_addrs()
-                .ok()
-                .and_then(|mut a| a.next())
-                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(250)).ok())
-                .is_some();
-            if !reachable {
-                f.push(finding(
-                    "POSTGRES-CONNECT-001",
-                    Severity::Warning,
-                    "PostgreSQL endpoint is unreachable",
-                    "PostgreSQL",
-                    "A read-only TCP connectivity check could not reach the configured endpoint.",
-                    vec![format!("host={host}"), format!("port={port}")],
-                    Confidence::Confirmed,
-                    "Start the database or correct the redacted endpoint configuration.",
-                ));
-            }
-        }
-    }
+    f.extend(environment_findings(path, &p));
     Report {
         project: p,
         findings: f,
@@ -412,6 +362,11 @@ pub fn diagnose(path: &Path) -> Report {
 /// Run only diagnostics whose findings describe environment configuration or its database endpoint.
 pub fn diagnose_environment(path: &Path) -> Report {
     let project = detect_project(path);
+    let findings = environment_findings(path, &project);
+    Report { project, findings }
+}
+
+fn environment_findings(path: &Path, project: &Project) -> Vec<Finding> {
     let mut findings = Vec::new();
     if !project.env_example.is_empty() && !path.join(".env").is_file() {
         findings.push(finding(
@@ -464,7 +419,7 @@ pub fn diagnose_environment(path: &Path) -> Report {
             }
         }
     }
-    Report { project, findings }
+    findings
 }
 
 /// Run only diagnostics whose findings describe configured host ports.
