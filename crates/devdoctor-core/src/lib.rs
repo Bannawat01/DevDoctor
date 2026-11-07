@@ -431,8 +431,12 @@ pub fn diagnose_ports(path: &Path) -> Report {
 }
 
 fn port_finding(port: u16) -> Finding {
+    port_finding_with_ownership(port, lookup_tcp_owners(port))
+}
+
+fn port_finding_with_ownership(port: u16, ownership: OwnershipResult) -> Finding {
     let mut evidence = vec![format!("port={port}")];
-    match lookup_tcp_owners(port) {
+    match ownership {
         OwnershipResult::Owners(owners) if owners.is_empty() => {
             evidence.push("owner=not_identified".into());
         }
@@ -607,6 +611,25 @@ mod tests {
         assert!(
             matches!(lookup_tcp_owners(0), OwnershipResult::Owners(owners) if owners.is_empty())
         );
+    }
+
+    #[test]
+    fn ownership_fallbacks_preserve_port_conflicts() {
+        for ownership in [
+            OwnershipResult::PermissionDenied,
+            OwnershipResult::Unsupported,
+            OwnershipResult::Unavailable,
+            OwnershipResult::Owners(vec![PortOwner {
+                pid: 42,
+                process_name: None,
+                executable_path: None,
+            }]),
+        ] {
+            let finding = port_finding_with_ownership(5432, ownership);
+            assert_eq!(finding.code, "PORT-CONFLICT-001");
+            assert_eq!(finding.severity, Severity::Error);
+            assert!(finding.evidence.iter().any(|item| item == "port=5432"));
+        }
     }
 
     #[cfg(not(any(windows, target_os = "linux")))]
