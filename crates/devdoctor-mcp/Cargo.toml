@@ -14,3 +14,6 @@ serde_json.workspace = true
 rmcp.workspace = true
 tokio.workspace = true
 devdoctor-core = { path = "../devdoctor-core" }
+
+[dev-dependencies]
+tempfile.workspace = true
