@@ -9,7 +9,8 @@ use std::{
     fs,
     net::{TcpStream, ToSocketAddrs},
     path::Path,
-    process::Command,
+    process::{Command, Stdio},
+    thread,
     time::Duration,
 };
 
@@ -95,7 +96,7 @@ pub fn detect_project(path: &Path) -> Project {
         }
     }
     if let Ok(v) = fs::read_to_string(path.join(".env")) {
-        p.database_url = find_var(&v, "DATABASE_URL");
+        p.database_url = find_var(&v, "DATABASE_URL").map(|v| redact_url(&v));
     }
     p
 }
@@ -114,15 +115,40 @@ fn find_var(s: &str, k: &str) -> Option<String> {
             .map(|(_, b)| b.trim().trim_matches('"').to_string())
     })
 }
+fn redact_url(url: &str) -> String {
+    if let Some((scheme, rest)) = url.split_once("//") {
+        if let Some((_, host)) = rest.rsplit_once('@') {
+            return format!("{scheme}//<redacted>@{host}");
+        }
+    }
+    url.to_string()
+}
 fn parse_ports(s: &str, p: &mut Project) {
     for line in s.lines() {
-        let t = line.trim().trim_matches(['"', '\'']);
+        for token in line.split(['[', ']', ',', ' ', '"', '\'']) {
+            if let Some((host, container)) = token.split_once(':') {
+                if let (Ok(host), Ok(container)) = (host.parse::<u16>(), container.parse::<u16>()) {
+                    p.compose_ports.push(host);
+                    if container == 5432 {
+                        p.compose_db_ports.push(host);
+                    }
+                }
+            }
+        }
+        let t = line
+            .trim()
+            .trim_start_matches('-')
+            .trim()
+            .trim_matches(['"', '\'']);
         if t.contains(':') {
             let a = t.split(':').collect::<Vec<_>>();
             if a.len() >= 2 {
                 let left = a[a.len() - 2].trim_matches(['"', '\'']);
                 let right = a[a.len() - 1].split(['#', '"']).next().unwrap_or("").trim();
                 if let (Ok(host), Ok(container)) = (left.parse::<u16>(), right.parse::<u16>()) {
+                    if p.compose_ports.contains(&host) {
+                        continue;
+                    }
                     p.compose_ports.push(host);
                     if container == 5432 {
                         p.compose_db_ports.push(host)
@@ -132,15 +158,92 @@ fn parse_ports(s: &str, p: &mut Project) {
         }
     }
 }
+fn parse_url_host_port(url: &str) -> Option<(String, u16)> {
+    let authority = url.split("//").nth(1)?.split('/').next()?;
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let (host, port) = authority.rsplit_once(':')?;
+    Some((
+        host.trim_matches(['[', ']']).to_string(),
+        port.parse().ok()?,
+    ))
+}
 fn parse_url_port(url: &str) -> Option<u16> {
-    url.split('@')
-        .next_back()?
-        .split(':')
-        .next_back()?
-        .split('/')
-        .next()?
-        .parse()
-        .ok()
+    parse_url_host_port(url).map(|(_, p)| p)
+}
+pub fn resolve_executable(path_entries: &[String], names: &[&str]) -> Vec<String> {
+    path_entries
+        .iter()
+        .flat_map(|entry| names.iter().map(move |name| format!("{entry}\\{name}")))
+        .filter(|candidate| Path::new(candidate).is_file())
+        .collect()
+}
+pub fn linker_diagnostic(
+    host: &str,
+    path_entries: &[String],
+    rustc_linker: Option<&str>,
+) -> Option<Finding> {
+    if !host.contains("windows") {
+        return None;
+    }
+    let candidates = resolve_executable(path_entries, &["link.exe"]);
+    let first = candidates.first()?;
+    let lower = first.to_ascii_lowercase();
+    let suspicious =
+        lower.contains("git\\usr\\bin") || lower.contains("mingw") || lower.contains("msys");
+    let mismatch = rustc_linker.is_some_and(|l| l.eq_ignore_ascii_case("gnu")) && !suspicious;
+    if suspicious || mismatch {
+        Some(finding(
+            "RUST-LINKER-001",
+            Severity::Warning,
+            "Suspicious Windows linker resolution",
+            "PATH",
+            "The first link.exe candidate may not match the Rust target toolchain.",
+            vec![
+                format!("first_candidate={first}"),
+                format!("candidates={candidates:?}"),
+                format!("target_linker={rustc_linker:?}"),
+            ],
+            Confidence::Suspected,
+            "Use a matching MSVC or GNU developer environment and verify PATH order.",
+        ))
+    } else {
+        None
+    }
+}
+pub fn redact_text(input: &str) -> String {
+    let mut out = input.to_string();
+    for key in ["password", "token", "secret", "api_key"] {
+        let mut pos = 0;
+        while let Some(found) = out[pos..].to_ascii_lowercase().find(&format!("{key}=")) {
+            let start = pos + found + key.len() + 1;
+            let end = out[start..]
+                .find(['&', ' ', '\n'])
+                .map_or(out.len(), |e| start + e);
+            out.replace_range(start..end, "<redacted>");
+            pos = start + 10;
+        }
+    }
+    out
+}
+fn cmd(program: &str, args: &[&str]) -> Option<String> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    for _ in 0..20 {
+        if let Ok(Some(status)) = child.try_wait() {
+            if status.success() {
+                let output = child.wait_with_output().ok()?;
+                return Some(redact_text(String::from_utf8_lossy(&output.stdout).trim()));
+            }
+            return None;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    let _ = child.kill();
+    None
 }
 fn finding(
     code: &str,
@@ -163,14 +266,6 @@ fn finding(
         recommendation: recommendation.into(),
         verified: true,
     }
-}
-fn cmd(program: &str, args: &[&str]) -> Option<String> {
-    Command::new(program)
-        .args(args)
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 pub fn diagnose(path: &Path) -> Report {
     let p = detect_project(path);
@@ -199,6 +294,20 @@ pub fn diagnose(path: &Path) -> Report {
                 Confidence::Confirmed,
                 "No action required.",
             ));
+        }
+        if let Some(host) = cmd("rustc", &["-vV"]) {
+            let target = host.lines().find_map(|l| l.strip_prefix("host: "));
+            if let Some(finding) = linker_diagnostic(
+                target.unwrap_or(""),
+                &std::env::var("PATH")
+                    .unwrap_or_default()
+                    .split(';')
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+                None,
+            ) {
+                f.push(finding);
+            }
         }
     }
     if p.stack.iter().any(|s| s == "Node") {
@@ -270,6 +379,26 @@ pub fn diagnose(path: &Path) -> Report {
                     ],
                     Confidence::Confirmed,
                     "Align DATABASE_URL with the published PostgreSQL host port.",
+                ));
+            }
+        }
+        if let Some((host, port)) = parse_url_host_port(url) {
+            let reachable = format!("{host}:{port}")
+                .to_socket_addrs()
+                .ok()
+                .and_then(|mut a| a.next())
+                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(250)).ok())
+                .is_some();
+            if !reachable {
+                f.push(finding(
+                    "POSTGRES-CONNECT-001",
+                    Severity::Warning,
+                    "PostgreSQL endpoint is unreachable",
+                    "PostgreSQL",
+                    "A read-only TCP connectivity check could not reach the configured endpoint.",
+                    vec![format!("host={host}"), format!("port={port}")],
+                    Confidence::Confirmed,
+                    "Start the database or correct the redacted endpoint configuration.",
                 ));
             }
         }
@@ -353,5 +482,52 @@ mod tests {
         let p = detect_project(d.path());
         assert_eq!(p.stack.len(), 2);
         assert_eq!(redacted_env(d.path())["TOKEN"], "<redacted>");
+    }
+    #[test]
+    fn compose_ports_and_database_mismatch_are_deterministic() {
+        let d = tempdir().unwrap();
+        fs::write(
+            d.path().join("compose.yml"),
+            "services:\n  db:\n    ports:\n      - \"15432:5432\"\n",
+        )
+        .unwrap();
+        fs::write(
+            d.path().join(".env"),
+            "DATABASE_URL=postgres://u:p@127.0.0.1:65432/db\n",
+        )
+        .unwrap();
+        assert!(detect_project(d.path()).database_url.is_some());
+        let r = diagnose(d.path());
+        assert_eq!(r.project.compose_db_ports, vec![15432]);
+        assert!(r.findings.iter().any(|f| f.code == "ENV-DATABASE-001"));
+        assert!(r.findings.iter().any(|f| f.code == "POSTGRES-CONNECT-001"));
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(!json.contains(":p@"));
+    }
+    #[test]
+    fn linker_shadowing_requires_real_candidate() {
+        let d = tempdir().unwrap();
+        let git = d.path().join("Git").join("usr").join("bin");
+        fs::create_dir_all(&git).unwrap();
+        fs::write(git.join("link.exe"), "fake").unwrap();
+        let finding =
+            linker_diagnostic("x86_64-pc-windows-msvc", &[git.display().to_string()], None)
+                .unwrap();
+        assert_eq!(finding.code, "RUST-LINKER-001");
+        assert!(
+            linker_diagnostic(
+                "x86_64-unknown-linux-gnu",
+                &[git.display().to_string()],
+                None
+            )
+            .is_none()
+        );
+    }
+    #[test]
+    fn redacts_common_secret_shapes() {
+        assert_eq!(
+            redact_text("token=abc password=xyz"),
+            "token=<redacted> password=<redacted>"
+        );
     }
 }
