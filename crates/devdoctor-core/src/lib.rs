@@ -408,6 +408,88 @@ pub fn diagnose(path: &Path) -> Report {
         findings: f,
     }
 }
+
+/// Run only diagnostics whose findings describe environment configuration or its database endpoint.
+pub fn diagnose_environment(path: &Path) -> Report {
+    let project = detect_project(path);
+    let mut findings = Vec::new();
+    if !project.env_example.is_empty() && !path.join(".env").is_file() {
+        findings.push(finding(
+            "ENV-MISSING-001",
+            Severity::Warning,
+            ".env file is missing",
+            "Environment",
+            ".env.example declares variables but .env is absent.",
+            project.env_example.clone(),
+            Confidence::Confirmed,
+            "Create .env from .env.example without committing secrets.",
+        ));
+    }
+    if let Some(url) = &project.database_url {
+        if let Some(port) = parse_url_port(url) {
+            if !project.compose_db_ports.is_empty() && !project.compose_db_ports.contains(&port) {
+                findings.push(finding(
+                    "ENV-DATABASE-001",
+                    Severity::Warning,
+                    "DATABASE_URL port does not match Compose",
+                    "PostgreSQL",
+                    "The configured database URL uses a host port not published by Compose.",
+                    vec![
+                        format!("configured_port={port}"),
+                        format!("compose_ports={:?}", project.compose_db_ports),
+                    ],
+                    Confidence::Confirmed,
+                    "Align DATABASE_URL with the published PostgreSQL host port.",
+                ));
+            }
+        }
+        if let Some((host, port)) = parse_url_host_port(url) {
+            let reachable = format!("{host}:{port}")
+                .to_socket_addrs()
+                .ok()
+                .and_then(|mut a| a.next())
+                .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(250)).ok())
+                .is_some();
+            if !reachable {
+                findings.push(finding(
+                    "POSTGRES-CONNECT-001",
+                    Severity::Warning,
+                    "PostgreSQL endpoint is unreachable",
+                    "PostgreSQL",
+                    "A read-only TCP connectivity check could not reach the configured endpoint.",
+                    vec![format!("host={host}"), format!("port={port}")],
+                    Confidence::Confirmed,
+                    "Start the database or correct the redacted endpoint configuration.",
+                ));
+            }
+        }
+    }
+    Report { project, findings }
+}
+
+/// Run only diagnostics whose findings describe configured host ports.
+pub fn diagnose_ports(path: &Path) -> Report {
+    let project = detect_project(path);
+    let findings = project
+        .compose_ports
+        .iter()
+        .filter(|port| TcpListenerCheck::busy(**port))
+        .map(|port| {
+            finding(
+                "PORT-CONFLICT-001",
+                Severity::Error,
+                "Host port is occupied",
+                "Ports",
+                &format!("TCP port {port} accepts a local connection."),
+                vec![format!("port={port}")],
+                Confidence::Confirmed,
+                "Stop the conflicting service or change the Compose host port.",
+            )
+        })
+        .collect();
+    Report { project, findings }
+}
+
 struct TcpListenerCheck;
 impl TcpListenerCheck {
     fn busy(port: u16) -> bool {
@@ -508,6 +590,33 @@ mod tests {
         let json = serde_json::to_string(&r).unwrap();
         assert!(!json.contains(":p@"));
     }
+    #[test]
+    fn domain_diagnostics_return_only_the_requested_findings() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("Cargo.toml"), "[package]\nname='x'").unwrap();
+        fs::write(d.path().join(".env.example"), "TOKEN=\n").unwrap();
+        let environment = diagnose_environment(d.path());
+        assert_eq!(environment.findings.len(), 1);
+        assert_eq!(environment.findings[0].code, "ENV-MISSING-001");
+        assert!(diagnose_ports(d.path()).findings.is_empty());
+    }
+
+    #[test]
+    fn port_diagnostics_detect_an_occupied_configured_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let d = tempdir().unwrap();
+        fs::write(
+            d.path().join("compose.yml"),
+            format!("services:\n  app:\n    ports:\n      - \"{port}:80\"\n"),
+        )
+        .unwrap();
+        let report = diagnose_ports(d.path());
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].code, "PORT-CONFLICT-001");
+        drop(listener);
+    }
+
     #[test]
     fn linker_shadowing_requires_real_candidate() {
         let d = tempdir().unwrap();
