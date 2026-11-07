@@ -6,7 +6,7 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/example/devdoctor"
+repository = "https://github.com/Bannawat01/DevDoctor"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
