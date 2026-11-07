@@ -17,3 +17,5 @@ devdoctor-core = { path = "../devdoctor-core" }
 
 [dev-dependencies]
 tempfile.workspace = true
+rmcp = { workspace = true, features = ["client", "transport-async-rw"] }
+tokio = { workspace = true, features = ["io-util"] }
