@@ -3,6 +3,9 @@ name = "devdoctor-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Reusable local-first developer environment diagnostics."
+repository.workspace = true
+readme = "../../README.md"
 
 [dependencies]
 serde.workspace = true

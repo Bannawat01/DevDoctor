@@ -20,9 +20,9 @@ project content or credentials to a remote service.
 | Experimental platform | Linux x86_64 (CI-verified, packaging may vary) |
 
 The current release is a GitHub ZIP containing executables. The official
-registry does not accept that ZIP as a generic local-binary package. Publishing
-therefore needs a crates.io package, MCPB bundle, or another supported package
-type. Do not imply that clients can install the GitHub ZIP directly.
+registry does not accept that ZIP as a generic local-binary package. The
+planned distribution is the `devdoctor-mcp` crates.io package; GitHub ZIPs
+remain the native/manual Windows release path.
 
 The server must be distributed separately from a Zed extension when the
 extension API requires downloading a binary. Do not embed credentials or a
@@ -58,5 +58,5 @@ execute repository scripts, or modify environment state.
 - [ ] Call all five tools from the Zed Agent UI.
 - [ ] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
 - [x] Prepare `docs/mcp-server.json` using the current official schema.
-- [ ] Publish a registry-supported package (crates.io, MCPB, or OCI).
+- [ ] Publish `devdoctor-core` and `devdoctor-mcp` to crates.io.
 - [ ] Validate and publish metadata with `mcp-publisher`.
