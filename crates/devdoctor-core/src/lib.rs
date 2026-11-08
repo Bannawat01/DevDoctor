@@ -77,6 +77,7 @@ pub fn detect_project(path: &Path) -> Project {
         ("compose.yaml", "Docker"),
         ("compose.yml", "Docker"),
         ("docker-compose.yml", "Docker"),
+        ("compose.override.yml", "Docker"),
     ] {
         if exists(f) {
             p.files.push(f.into());
@@ -90,11 +91,15 @@ pub fn detect_project(path: &Path) -> Project {
         p.env_example = read_env_names(&env);
         p.files.push(".env.example".into());
     }
-    for f in ["compose.yaml", "compose.yml", "docker-compose.yml"] {
+    for f in [
+        "compose.yaml",
+        "compose.yml",
+        "docker-compose.yml",
+        "compose.override.yml",
+    ] {
         if exists(f) {
             if let Ok(v) = fs::read_to_string(path.join(f)) {
                 parse_ports(&v, &mut p);
-                break;
             }
         }
     }
@@ -127,39 +132,59 @@ fn redact_url(url: &str) -> String {
     url.to_string()
 }
 fn parse_ports(s: &str, p: &mut Project) {
-    for line in s.lines() {
-        for token in line.split(['[', ']', ',', ' ', '"', '\'']) {
-            if let Some((host, container)) = token.split_once(':') {
-                if let (Ok(host), Ok(container)) = (host.parse::<u16>(), container.parse::<u16>()) {
-                    p.compose_ports.push(host);
-                    if container == 5432 {
-                        p.compose_db_ports.push(host);
-                    }
+    let Ok(root) = serde_yaml::from_str::<serde_yaml::Value>(s) else {
+        return;
+    };
+    let Some(services) = root.get("services").and_then(serde_yaml::Value::as_mapping) else {
+        return;
+    };
+    for service in services.values() {
+        let Some(ports) = service
+            .get("ports")
+            .and_then(serde_yaml::Value::as_sequence)
+        else {
+            continue;
+        };
+        for port in ports {
+            let pair: Option<(String, String)> = if let Some(text) = port.as_str() {
+                let fields = text.split(':').collect::<Vec<_>>();
+                if fields.len() < 2 {
+                    None
+                } else {
+                    Some((
+                        fields[fields.len() - 2].to_string(),
+                        fields[fields.len() - 1].to_string(),
+                    ))
                 }
+            } else {
+                let host = port.get("published").and_then(port_number);
+                let container = port.get("target").and_then(port_number);
+                host.zip(container)
+                    .map(|(host, container)| (host.to_string(), container.to_string()))
+            };
+            let Some((host, container)) = pair else {
+                continue;
+            };
+            let (Ok(host), Ok(container)) =
+                (host.trim().parse::<u16>(), container.trim().parse::<u16>())
+            else {
+                continue;
+            };
+            if !p.compose_ports.contains(&host) {
+                p.compose_ports.push(host);
             }
-        }
-        let t = line
-            .trim()
-            .trim_start_matches('-')
-            .trim()
-            .trim_matches(['"', '\'']);
-        if t.contains(':') {
-            let a = t.split(':').collect::<Vec<_>>();
-            if a.len() >= 2 {
-                let left = a[a.len() - 2].trim_matches(['"', '\'']);
-                let right = a[a.len() - 1].split(['#', '"']).next().unwrap_or("").trim();
-                if let (Ok(host), Ok(container)) = (left.parse::<u16>(), right.parse::<u16>()) {
-                    if p.compose_ports.contains(&host) {
-                        continue;
-                    }
-                    p.compose_ports.push(host);
-                    if container == 5432 {
-                        p.compose_db_ports.push(host)
-                    }
-                }
+            if container == 5432 && !p.compose_db_ports.contains(&host) {
+                p.compose_db_ports.push(host);
             }
         }
     }
+}
+
+fn port_number(value: &serde_yaml::Value) -> Option<u16> {
+    value
+        .as_u64()
+        .and_then(|port| u16::try_from(port).ok())
+        .or_else(|| value.as_str()?.parse().ok())
 }
 fn parse_url_host_port(url: &str) -> Option<(String, u16)> {
     let authority = url.split("//").nth(1)?.split('/').next()?;
@@ -624,6 +649,24 @@ mod tests {
         assert!(r.findings.iter().any(|f| f.code == "POSTGRES-CONNECT-001"));
         let json = serde_json::to_string(&r).unwrap();
         assert!(!json.contains(":p@"));
+    }
+
+    #[test]
+    fn compose_parser_supports_long_syntax_anchors_and_multiple_files() {
+        let d = tempdir().unwrap();
+        fs::write(
+            d.path().join("compose.yaml"),
+            "x-db-port: &db_port \"15432:5432\"\nservices:\n  db:\n    ports: [*db_port]\n",
+        )
+        .unwrap();
+        fs::write(
+            d.path().join("compose.override.yml"),
+            "services:\n  api:\n    ports:\n      - target: 8080\n        published: 18080\n",
+        )
+        .unwrap();
+        let project = detect_project(d.path());
+        assert_eq!(project.compose_ports, vec![15432, 18080]);
+        assert_eq!(project.compose_db_ports, vec![15432]);
     }
     #[test]
     fn domain_diagnostics_return_only_the_requested_findings() {
