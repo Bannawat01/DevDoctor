@@ -284,6 +284,122 @@ fn cmd_in_dir(program: &str, args: &[&str], dir: Option<&Path>) -> Option<String
     None
 }
 
+fn node_findings(path: &Path) -> Vec<Finding> {
+    let Ok(text) = fs::read_to_string(path.join("package.json")) else {
+        return Vec::new();
+    };
+    let Ok(package) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return vec![finding(
+            "NODE-CONFIG-001",
+            Severity::Warning,
+            "package.json is invalid",
+            "Node",
+            "The detected package manifest is not valid JSON.",
+            vec!["file=package.json".into()],
+            Confidence::Confirmed,
+            "Fix package.json syntax before running the project.",
+        )];
+    };
+    let mut findings = Vec::new();
+    if let Some(required) = package
+        .get("engines")
+        .and_then(|value| value.get("node"))
+        .and_then(serde_json::Value::as_str)
+    {
+        if let Some(actual) =
+            cmd("node", &["--version"]).and_then(|version| parse_node_major(&version))
+        {
+            if let Some(minimum) = required.strip_prefix(">=").and_then(parse_node_major) {
+                if actual < minimum {
+                    findings.push(finding(
+                        "NODE-ENGINE-001",
+                        Severity::Warning,
+                        "Node.js version does not satisfy engines",
+                        "Node",
+                        "The installed Node.js major version is below package.json engines.node.",
+                        vec![
+                            format!("required={required}"),
+                            format!("detected_major={actual}"),
+                        ],
+                        Confidence::Confirmed,
+                        "Use a Node.js version that satisfies package.json engines.node.",
+                    ));
+                }
+            }
+        }
+    }
+    let locks = [
+        ("package-lock.json", "npm"),
+        ("npm-shrinkwrap.json", "npm"),
+        ("pnpm-lock.yaml", "pnpm"),
+        ("yarn.lock", "yarn"),
+    ]
+    .into_iter()
+    .filter(|(file, _)| path.join(file).is_file())
+    .collect::<Vec<_>>();
+    if locks.len() > 1 {
+        findings.push(finding(
+            "NODE-PM-001",
+            Severity::Warning,
+            "Multiple Node lockfiles detected",
+            "Node",
+            "More than one package manager lockfile is present.",
+            locks
+                .iter()
+                .map(|(file, _)| format!("lockfile={file}"))
+                .collect(),
+            Confidence::Confirmed,
+            "Keep only the lockfile for the package manager used by this project.",
+        ));
+    }
+    if let Some(declared) = package
+        .get("packageManager")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| value.split('@').next())
+    {
+        if let Some((_, detected)) = locks.first() {
+            if declared != *detected {
+                findings.push(finding(
+                    "NODE-PM-001",
+                    Severity::Warning,
+                    "Node package manager does not match lockfile",
+                    "Node",
+                    "package.json declares a package manager different from the detected lockfile.",
+                    vec![
+                        format!("declared={declared}"),
+                        format!("lockfile={detected}"),
+                    ],
+                    Confidence::Confirmed,
+                    "Use the package manager declared by package.json or update the lockfile.",
+                ));
+            }
+        }
+    }
+    if !locks.is_empty() && !path.join("node_modules").is_dir() {
+        findings.push(finding(
+            "NODE-DEPS-001",
+            Severity::Warning,
+            "Node dependencies are not present",
+            "Node",
+            "A lockfile exists but node_modules is absent; dependencies were not inspected or installed.",
+            vec![format!("package_manager={}", locks[0].1)],
+            Confidence::Suspected,
+            "Install dependencies using the project package manager; DevDoctor never runs install scripts.",
+        ));
+    }
+    findings
+}
+
+fn parse_node_major(version: &str) -> Option<u64> {
+    version
+        .trim()
+        .trim_start_matches('v')
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
+}
+
 fn docker_service_findings(path: &Path) -> Vec<Finding> {
     let Some(output) = cmd_in_dir(
         "docker",
@@ -406,6 +522,9 @@ pub fn diagnose(path: &Path) -> Report {
                 "Install Node.js or use the project’s documented runtime.",
             ));
         }
+    }
+    if p.stack.iter().any(|s| s == "Node") {
+        f.extend(node_findings(path));
     }
     if p.stack.iter().any(|s| s == "Docker") {
         if cmd("docker", &["info", "--format", "{{.ServerVersion}}"]).is_none() {
@@ -575,6 +694,22 @@ pub fn explain(code: &str) -> Option<(&'static str, &'static str)> {
             "Docker service is not healthy",
             "Inspect the service logs and configuration; DevDoctor does not restart containers.",
         )),
+        "NODE-ENGINE-001" => Some((
+            "Node.js version does not satisfy engines",
+            "Use a Node.js version that satisfies package.json engines.node.",
+        )),
+        "NODE-PM-001" => Some((
+            "Multiple Node lockfiles detected",
+            "Keep only the lockfile for the package manager used by this project.",
+        )),
+        "NODE-DEPS-001" => Some((
+            "Node dependencies are not present",
+            "Install dependencies using the project package manager.",
+        )),
+        "NODE-CONFIG-001" => Some((
+            "package.json is invalid",
+            "Fix package.json syntax before running the project.",
+        )),
         "PORT-CONFLICT-001" => Some((
             "Host port is occupied",
             "Stop the conflicting local service or change the host mapping.",
@@ -618,7 +753,11 @@ mod tests {
     fn detects_mixed_and_redacts() {
         let d = tempdir().unwrap();
         fs::write(d.path().join("Cargo.toml"), "[package]\nname='x'").unwrap();
-        fs::write(d.path().join("package.json"), "{}").unwrap();
+        fs::write(
+            d.path().join("package.json"),
+            r#"{"packageManager":"yarn@1.22.0"}"#,
+        )
+        .unwrap();
         fs::write(d.path().join(".env.example"), "DATABASE_URL=\nTOKEN=\n").unwrap();
         fs::write(
             d.path().join(".env"),
@@ -667,6 +806,27 @@ mod tests {
         let project = detect_project(d.path());
         assert_eq!(project.compose_ports, vec![15432, 18080]);
         assert_eq!(project.compose_db_ports, vec![15432]);
+    }
+
+    #[test]
+    fn node_diagnostics_are_safe_for_invalid_manifests_and_lockfiles() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("package.json"), "{ invalid").unwrap();
+        assert_eq!(node_findings(d.path())[0].code, "NODE-CONFIG-001");
+
+        fs::write(d.path().join("package.json"), "{}").unwrap();
+        fs::write(d.path().join("package-lock.json"), "{}").unwrap();
+        fs::write(d.path().join("pnpm-lock.yaml"), "lockfileVersion: 9").unwrap();
+        let findings = node_findings(d.path());
+        assert!(findings.iter().any(|f| f.code == "NODE-PM-001"));
+        assert!(findings.iter().any(|f| f.code == "NODE-DEPS-001"));
+    }
+
+    #[test]
+    fn node_version_parser_handles_common_forms() {
+        assert_eq!(parse_node_major("v20.11.1"), Some(20));
+        assert_eq!(parse_node_major("18.19.0"), Some(18));
+        assert_eq!(parse_node_major("not-a-version"), None);
     }
     #[test]
     fn domain_diagnostics_return_only_the_requested_findings() {
