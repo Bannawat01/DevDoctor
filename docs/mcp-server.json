@@ -1,0 +1,12 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Bannawat01/devdoctor",
+  "title": "DevDoctor",
+  "description": "Read-only local diagnostics for Rust, Node, Docker, ports, and environment configuration.",
+  "websiteUrl": "https://github.com/Bannawat01/DevDoctor",
+  "repository": {
+    "url": "https://github.com/Bannawat01/DevDoctor",
+    "source": "github"
+  },
+  "version": "0.1.0"
+}

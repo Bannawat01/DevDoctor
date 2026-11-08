@@ -1,6 +1,6 @@
 # Zed MCP Registry metadata
 
-Status: `PREPARED`, not published to the Zed registry.
+Status: `PREPARED`; draft official metadata is in `docs/mcp-server.json`. Publication is blocked until a registry-supported package is available; the registry stores metadata, not GitHub release ZIP artifacts.
 
 DevDoctor is a local stdio MCP server. A registry entry should launch the
 versioned `devdoctor-mcp` release binary for the user's platform and pass no
@@ -18,6 +18,11 @@ project content or credentials to a remote service.
 | Telemetry | None |
 | Supported platform | Windows x86_64 (stable release artifact) |
 | Experimental platform | Linux x86_64 (CI-verified, packaging may vary) |
+
+The current release is a GitHub ZIP containing executables. The official
+registry does not accept that ZIP as a generic local-binary package. The
+planned distribution is the `devdoctor-mcp` crates.io package; GitHub ZIPs
+remain the native/manual Windows release path.
 
 The server must be distributed separately from a Zed extension when the
 extension API requires downloading a binary. Do not embed credentials or a
@@ -52,4 +57,6 @@ execute repository scripts, or modify environment state.
 - [ ] Install from Zed and confirm tool discovery.
 - [ ] Call all five tools from the Zed Agent UI.
 - [ ] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
-- [ ] Publish only after manual verification.
+- [x] Prepare `docs/mcp-server.json` using the current official schema.
+- [ ] Publish `devdoctor-core` and `devdoctor-mcp` to crates.io.
+- [ ] Validate and publish metadata with `mcp-publisher`.

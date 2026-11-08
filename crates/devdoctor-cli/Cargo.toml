@@ -2,6 +2,10 @@
 name = "devdoctor-cli"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+description = "Local-first developer environment diagnostics CLI."
+repository.workspace = true
+readme = "../../README.md"
 
 [[bin]]
 name = "devdoctor"
