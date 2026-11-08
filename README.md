@@ -1,5 +1,7 @@
 # DevDoctor
 
+mcp-name: io.github.Bannawat01/devdoctor
+
 Local, read-only diagnostics for Rust, Node, Docker, ports, and environment configuration.
 
 Licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
