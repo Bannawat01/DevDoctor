@@ -34,6 +34,8 @@ The stdio server exposes `diagnose_project`, `check_toolchain`, `check_environme
 
 Registry preparation and the publishing checklist are documented in [`docs/zed-mcp-registry.md`](docs/zed-mcp-registry.md). The registry entry is not published yet; verify the current Zed registry schema and Agent UI before claiming Zed integration.
 
+The minimal Zed extension source is in [`zed-extension/`](zed-extension/). It delegates to a separately installed `devdoctor-mcp` binary on PATH; it is not yet published or verified in the Zed Agent UI.
+
 `docs/zed-mcp.json` is a portable template. Replace its `command` value with the absolute path to your own `devdoctor-mcp.exe`; it never points to the author's machine.
 
 Docker diagnostics are read-only. When a Compose project is detected and the Docker engine is reachable, DevDoctor inspects `docker compose ps --all` and reports services that are exited or unhealthy. It never starts, stops, restarts, or removes containers. An unavailable engine is reported separately from a service failure.
