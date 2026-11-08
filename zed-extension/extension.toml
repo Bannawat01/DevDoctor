@@ -1,0 +1,9 @@
+id = "devdoctor-mcp-server"
+name = "DevDoctor MCP Server"
+description = "Local, read-only developer environment diagnostics for Zed."
+version = "0.1.0"
+schema_version = 1
+authors = ["Bannawat Rattanarak"]
+repository = "https://github.com/Bannawat01/DevDoctor"
+
+[context_servers.devdoctor]
