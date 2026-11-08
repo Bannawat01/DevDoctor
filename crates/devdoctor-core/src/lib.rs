@@ -233,8 +233,13 @@ pub fn redact_text(input: &str) -> String {
     out
 }
 fn cmd(program: &str, args: &[&str]) -> Option<String> {
+    cmd_in_dir(program, args, None)
+}
+
+fn cmd_in_dir(program: &str, args: &[&str], dir: Option<&Path>) -> Option<String> {
     let mut child = Command::new(program)
         .args(args)
+        .current_dir(dir.unwrap_or_else(|| Path::new(".")))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -243,7 +248,8 @@ fn cmd(program: &str, args: &[&str]) -> Option<String> {
         if let Ok(Some(status)) = child.try_wait() {
             if status.success() {
                 let output = child.wait_with_output().ok()?;
-                return Some(redact_text(String::from_utf8_lossy(&output.stdout).trim()));
+                let stdout = &output.stdout[..output.stdout.len().min(16 * 1024)];
+                return Some(redact_text(String::from_utf8_lossy(stdout).trim()));
             }
             return None;
         }
@@ -251,6 +257,53 @@ fn cmd(program: &str, args: &[&str]) -> Option<String> {
     }
     let _ = child.kill();
     None
+}
+
+fn docker_service_findings(path: &Path) -> Vec<Finding> {
+    let Some(output) = cmd_in_dir(
+        "docker",
+        &[
+            "compose",
+            "ps",
+            "--all",
+            "--format",
+            "{{.Service}}|{{.State}}|{{.Health}}",
+        ],
+        Some(path),
+    ) else {
+        return Vec::new();
+    };
+    parse_docker_service_findings(&output)
+}
+
+fn parse_docker_service_findings(output: &str) -> Vec<Finding> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(3, '|');
+            let service = fields.next()?.trim();
+            let state = fields.next()?.trim().to_ascii_lowercase();
+            let health = fields.next().unwrap_or("").trim().to_ascii_lowercase();
+            if service.is_empty() || state == "running" && health != "unhealthy" {
+                return None;
+            }
+            let detail = if health.is_empty() {
+                format!("state={state}")
+            } else {
+                format!("state={state},health={health}")
+            };
+            Some(finding(
+                "DOCKER-SERVICE-001",
+                Severity::Warning,
+                "Docker service is not healthy",
+                "Docker",
+                "A Compose service is not in a healthy running state.",
+                vec![format!("service={service}"), detail],
+                Confidence::Confirmed,
+                "Inspect the service logs and configuration; DevDoctor does not restart containers.",
+            ))
+        })
+        .collect()
 }
 fn finding(
     code: &str,
@@ -341,6 +394,8 @@ pub fn diagnose(path: &Path) -> Report {
                 Confidence::Suspected,
                 "Start Docker Desktop or verify permissions.",
             ));
+        } else {
+            f.extend(docker_service_findings(path));
         }
     }
     for port in &p.compose_ports {
@@ -490,6 +545,10 @@ pub fn explain(code: &str) -> Option<(&'static str, &'static str)> {
         "DOCKER-ENGINE-001" => Some((
             "Docker engine unavailable",
             "Start Docker Desktop and retry.",
+        )),
+        "DOCKER-SERVICE-001" => Some((
+            "Docker service is not healthy",
+            "Inspect the service logs and configuration; DevDoctor does not restart containers.",
         )),
         "PORT-CONFLICT-001" => Some((
             "Host port is occupied",
@@ -674,6 +733,19 @@ mod tests {
         let d = tempdir().unwrap();
         fs::write(d.path().join("compose.yml"), "ports: [not-a-port]\n").unwrap();
         assert!(detect_project(d.path()).compose_ports.is_empty());
+    }
+
+    #[test]
+    fn docker_service_parser_reports_only_unhealthy_states() {
+        let findings = parse_docker_service_findings(
+            "db|running|healthy\napi|exited|\nworker|running|unhealthy\nweb|starting|\ncache|created|\nmalformed\n",
+        );
+        assert_eq!(findings.len(), 4);
+        assert!(findings.iter().all(|f| f.code == "DOCKER-SERVICE-001"));
+        assert!(findings[0].evidence.iter().any(|e| e == "service=api"));
+        assert!(findings[1].evidence.iter().any(|e| e == "service=worker"));
+        assert!(findings[2].evidence.iter().any(|e| e == "service=web"));
+        assert!(findings[3].evidence.iter().any(|e| e == "service=cache"));
     }
     #[cfg(windows)]
     #[test]
