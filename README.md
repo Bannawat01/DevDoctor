@@ -34,6 +34,8 @@ The stdio server exposes `diagnose_project`, `check_toolchain`, `check_environme
 
 `docs/zed-mcp.json` is a portable template. Replace its `command` value with the absolute path to your own `devdoctor-mcp.exe`; it never points to the author's machine.
 
+Docker diagnostics are read-only. When a Compose project is detected and the Docker engine is reachable, DevDoctor inspects `docker compose ps --all` and reports services that are exited or unhealthy. It never starts, stops, restarts, or removes containers. An unavailable engine is reported separately from a service failure.
+
 ## Windows binary
 
 Download `devdoctor-windows-x86_64.zip` from the GitHub prerelease, extract it, and run `devdoctor.exe doctor --path <project>`. Verify the accompanying SHA-256 checksum before use.
