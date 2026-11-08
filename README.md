@@ -34,7 +34,7 @@ The stdio server exposes `diagnose_project`, `check_toolchain`, `check_environme
 
 Registry preparation and the publishing checklist are documented in [`docs/zed-mcp-registry.md`](docs/zed-mcp-registry.md). The registry entry is not published yet; verify the current Zed registry schema and Agent UI before claiming Zed integration.
 
-The minimal Zed extension source is in [`zed-extension/`](zed-extension/). It delegates to a separately installed `devdoctor-mcp` binary on PATH; it is not yet published or verified in the Zed Agent UI.
+The minimal Zed extension source is in [`zed-extension/`](zed-extension/). It delegates to a separately installed `devdoctor-mcp` binary on PATH. Local MCP configuration and a real Zed Agent invocation have been verified; extension-registry publication remains separate.
 
 `docs/zed-mcp.json` is a portable template. Replace its `command` value with the absolute path to your own `devdoctor-mcp.exe`; it never points to the author's machine.
 

@@ -1,6 +1,6 @@
 # Zed MCP Registry metadata
 
-Status: `PREPARED`, not published to the Zed registry.
+Status: `PREPARED`; local MCP and Zed Agent verification passed, but registry publication is not yet complete.
 
 DevDoctor is a local stdio MCP server. A registry entry should launch the
 versioned `devdoctor-mcp` release binary for the user's platform and pass no
@@ -49,7 +49,7 @@ execute repository scripts, or modify environment state.
 
 - [ ] Validate the registry schema against the current Zed registry repository.
 - [ ] Verify the release asset and SHA-256 checksum for each advertised platform.
-- [ ] Install from Zed and confirm tool discovery.
-- [ ] Call all five tools from the Zed Agent UI.
-- [ ] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
+- [x] Install/configure the local MCP server in Zed and confirm tool discovery.
+- [x] Call `diagnose_project` from the Zed Agent UI against the DevDoctor repository.
+- [x] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
 - [ ] Publish only after manual verification.
