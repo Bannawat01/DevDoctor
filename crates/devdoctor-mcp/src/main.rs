@@ -51,7 +51,7 @@ impl DevDoctor {
 }
 #[tool_handler(
     name = "devdoctor",
-    version = "0.1.0",
+    version = "0.1.2",
     instructions = "Read-only local developer environment diagnostics. Never modifies project files or environment state."
 )]
 impl ServerHandler for DevDoctor {}
