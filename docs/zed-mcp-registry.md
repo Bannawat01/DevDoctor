@@ -1,6 +1,6 @@
 # Zed MCP Registry metadata
 
-Status: `READY TO PUBLISH`; `devdoctor-core` and `devdoctor-mcp` `0.1.0` are published on crates.io. Patch release `0.1.1` adds the required registry ownership marker. The publisher input is the root `server.json`; `docs/mcp-server.json` remains the documented copy.
+Status: `PUBLISHED`; `devdoctor-core` and `devdoctor-mcp` `0.1.1` are published on crates.io and `io.github.Bannawat01/devdoctor@0.1.1` is active in the official MCP Registry. The publisher input is the root `server.json`; `docs/mcp-server.json` remains the documented copy.
 
 DevDoctor is a local stdio MCP server. A registry entry should launch the
 versioned `devdoctor-mcp` release binary for the user's platform and pass no
@@ -57,4 +57,4 @@ execute repository scripts, or modify environment state.
 - [ ] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
 - [x] Prepare `docs/mcp-server.json` using the current official schema.
 - [x] Publish `devdoctor-core` and `devdoctor-mcp` to crates.io.
-- [ ] Validate and publish metadata with `mcp-publisher`.
+- [x] Validate and publish metadata with `mcp-publisher`.

@@ -34,7 +34,7 @@ Build the release server, then add it in Zed: Settings → AI → MCP Servers �
 
 The stdio server exposes `diagnose_project`, `check_toolchain`, `check_environment`, `check_ports`, and `explain_finding`. It accepts only local existing directories and never runs repository scripts or changes environment state.
 
-Registry preparation and the publishing checklist are documented in [`docs/zed-mcp-registry.md`](docs/zed-mcp-registry.md). The `devdoctor-mcp` package is published on crates.io; official registry metadata is in [`docs/mcp-server.json`](docs/mcp-server.json) and still requires registry publication.
+Registry preparation and the publishing checklist are documented in [`docs/zed-mcp-registry.md`](docs/zed-mcp-registry.md). `devdoctor-mcp` 0.1.1 is published on crates.io and listed as `io.github.Bannawat01/devdoctor` in the official MCP Registry.
 
 The minimal Zed extension source is in [`zed-extension/`](zed-extension/). It delegates to a separately installed `devdoctor-mcp` binary on PATH; it is not yet published or verified in the Zed Agent UI.
 
