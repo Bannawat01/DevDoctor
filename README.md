@@ -19,26 +19,40 @@ Exit codes: `0` healthy, `1` diagnostic errors/warnings, `2` invalid invocation 
 
 ## MCP / Zed
 
-Build the release server, then add it in Zed: Settings → AI → MCP Servers → Add Local Server.
+Install the published MCP server:
+
+```powershell
+cargo install devdoctor-mcp --version 0.1.2 --locked
+```
+
+Confirm that `devdoctor-mcp` is available on `PATH`, then add it in Zed under
+**Settings > AI > MCP Servers > Add Local Server**:
 
 ```json
 {
   "context_servers": {
     "devdoctor": {
-    "command": "C:/absolute/path/to/devdoctor-mcp.exe",
+      "command": "devdoctor-mcp",
       "args": []
     }
   }
 }
 ```
 
+If Zed does not inherit Cargo's binary directory, use the absolute path to
+`%USERPROFILE%/.cargo/bin/devdoctor-mcp.exe` on Windows instead.
+
 The stdio server exposes `diagnose_project`, `check_toolchain`, `check_environment`, `check_ports`, and `explain_finding`. It accepts only local existing directories and never runs repository scripts or changes environment state.
 
 Registry preparation and the publishing checklist are documented in [`docs/zed-mcp-registry.md`](docs/zed-mcp-registry.md). `devdoctor-mcp` 0.1.2 is published on crates.io and listed as `io.github.Bannawat01/devdoctor` in the official MCP Registry.
 
-The minimal Zed extension source is in [`zed-extension/`](zed-extension/). It delegates to a separately installed `devdoctor-mcp` binary on PATH; it is not yet published or verified in the Zed Agent UI.
+The official MCP Registry entry distributes the crates.io package metadata. A
+manual Zed configuration launches the same installed stdio binary. The optional
+wrapper in [`zed-extension/`](zed-extension/) is retained for compatibility but
+is not the primary distribution path.
 
-`docs/zed-mcp.json` is a portable template. Replace its `command` value with the absolute path to your own `devdoctor-mcp.exe`; it never points to the author's machine.
+[`docs/zed-mcp.json`](docs/zed-mcp.json) is a portable PATH-based template and
+never points to the author's machine.
 
 Docker diagnostics are read-only. When a Compose project is detected and the Docker engine is reachable, DevDoctor inspects `docker compose ps --all` and reports services that are exited or unhealthy. It never starts, stops, restarts, or removes containers. An unavailable engine is reported separately from a service failure.
 
@@ -46,7 +60,11 @@ Docker diagnostics are read-only. When a Compose project is detected and the Doc
 
 Download `devdoctor-windows-x86_64.zip` from the GitHub prerelease, extract it, and run `devdoctor.exe doctor --path <project>`. Verify the accompanying SHA-256 checksum before use.
 
-The ready-to-copy local configuration is also in `docs/zed-mcp.json`. In Zed, open **Settings → AI → MCP Servers → Add Local Server**, then confirm the server is active before asking the Agent to run `diagnose_project`.
+The ready-to-copy local configuration is also in `docs/zed-mcp.json`. After
+adding it, confirm these five tools are visible: `diagnose_project`,
+`check_toolchain`, `check_environment`, `check_ports`, and `explain_finding`.
+Ask the Agent to run `diagnose_project` against a local project to verify the
+complete path.
 
 ## Privacy
 

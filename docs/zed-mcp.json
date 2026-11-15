@@ -1,7 +1,7 @@
 {
   "context_servers": {
     "devdoctor": {
-      "command": "C:/absolute/path/to/devdoctor-mcp.exe",
+      "command": "devdoctor-mcp",
       "args": []
     }
   }
