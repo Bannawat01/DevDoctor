@@ -28,33 +28,38 @@ machine-specific path in registry metadata.
 
 ## Manual Zed configuration
 
-For current Zed versions, configure the local server under **Settings → AI →
-MCP Servers → Add Local Server**. Use an absolute path to the downloaded
-binary:
+Install the published server, then configure it under **Settings > AI > MCP
+Servers > Add Local Server**:
+
+```powershell
+cargo install devdoctor-mcp --version 0.1.2 --locked
+```
 
 ```json
 {
   "context_servers": {
     "devdoctor": {
-      "command": "C:/path/to/devdoctor-mcp.exe",
+      "command": "devdoctor-mcp",
       "args": []
     }
   }
 }
 ```
 
-Verify the release checksum before use. After adding the server, confirm that
-all five tools appear in the Agent panel and call `diagnose_project` against a
-local fixture. The server must not start containers, install dependencies,
-execute repository scripts, or modify environment state.
+On Windows, if Zed does not inherit Cargo's binary directory, use the absolute
+path to `%USERPROFILE%/.cargo/bin/devdoctor-mcp.exe`. After adding the server,
+confirm that all five tools appear in the Agent panel and call
+`diagnose_project` against a local fixture. The server must not start
+containers, install dependencies, execute repository scripts, or modify
+environment state.
 
 ## Publishing checklist
 
-- [ ] Validate the registry schema against the current Zed registry repository.
-- [ ] Verify the release asset and SHA-256 checksum for each advertised platform.
-- [ ] Install from Zed and confirm tool discovery.
-- [ ] Call all five tools from the Zed Agent UI.
-- [ ] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
+- [x] Validate the official MCP Registry schema.
+- [x] Install the crates.io package and confirm protocol tool discovery.
+- [x] Invoke `diagnose_project` from the Zed Agent UI.
+- [ ] Re-run all five tools from the Zed Agent UI after a fresh Cargo install.
+- [x] Record `ZED_AGENT_VERIFIED` separately from protocol tests.
 - [x] Prepare `docs/mcp-server.json` using the current official schema.
 - [x] Publish `devdoctor-core` and `devdoctor-mcp` to crates.io.
 - [x] Validate and publish metadata with `mcp-publisher`.
