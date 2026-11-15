@@ -7,6 +7,8 @@
 
 **Local, read-only diagnostics for projects that fail to build, start, or connect.**
 
+![DevDoctor diagnostic overview](docs/devdoctor-overview.svg)
+
 DevDoctor correlates project configuration, toolchains, PATH resolution, Docker,
 ports, environment variables, and database endpoints into evidence-backed
 findings. It tells you what was observed, how confident the diagnosis is, and
