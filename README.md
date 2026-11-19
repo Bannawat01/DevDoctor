@@ -54,9 +54,16 @@ read-only; it never executes repository scripts or changes project state.
 
 ### CLI
 
-Run from the repository or build the workspace release binaries:
+For a normal installation, install the published CLI:
 
-```powershell
+```bash
+cargo install devdoctor-cli --version 0.1.2 --locked
+devdoctor doctor --path .
+```
+
+To run from the repository or build workspace release binaries instead:
+
+```bash
 cargo run -p devdoctor-cli -- doctor --path .
 cargo run -p devdoctor-cli -- doctor --json
 cargo run -p devdoctor-cli -- check rust
