@@ -26,6 +26,15 @@ jobs:
         run: cargo test --workspace
       - name: Release build
         run: cargo build --workspace --release
+      - name: CLI install smoke test
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "devdoctor-cli-install"
+          cargo install --path crates/devdoctor-cli --locked --root $root
+          $bin = Join-Path $root "bin/devdoctor.exe"
+          & $bin --version
+          & $bin doctor --path $env:RUNNER_TEMP
+          if ($LASTEXITCODE -gt 1) { exit $LASTEXITCODE }
 
   linux-experimental:
     name: Linux (experimental)
@@ -44,3 +53,10 @@ jobs:
         run: cargo test --workspace
       - name: Release build
         run: cargo build --workspace --release
+      - name: CLI install smoke test
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/devdoctor-cli-install"
+          cargo install --path crates/devdoctor-cli --locked --root "$root"
+          "$root/bin/devdoctor" --version
+          "$root/bin/devdoctor" doctor --path "$RUNNER_TEMP"
